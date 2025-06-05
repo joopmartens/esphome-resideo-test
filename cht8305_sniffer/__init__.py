@@ -1,0 +1,1 @@
+"""ESPHome component: cht8305_sniffer."""
