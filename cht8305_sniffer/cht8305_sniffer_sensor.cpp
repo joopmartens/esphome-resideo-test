@@ -50,40 +50,41 @@ void IRAM_ATTR i2cTriggerOnRaisingSCL()
 
 	switch (i2cCase)
 	{
-    default:
+        default:
 		case 0: // data bit
-      data = (data << 1) | (sda>0?1:0);
-	  	break;//end of case 0 general
+            data = (data << 1) | (sda>0?1:0);
+	   	    break;//end of case 0 general
 
 		case 1: //(N)ACK
-      switch (byteIdx)
-      {
-        case 0:
-          if (sda == 0) // SDA LOW ->  ACK 
-            device_address = data;
-          break;
-        case 1:
-          if (writing && sda == 0) {  // if the master is writing, the first byte is the address in the device registers
-            device_register_ptr = data;
+            switch (byteIdx)
+            {
+            case 0:
+                if (sda == 0) // SDA LOW ->  ACK 
+                    device_address = data;
+                break;
+                
+            case 1:
+                if (writing && sda == 0) {  // if the master is writing, the first byte is the address in the device registers
+                    device_register_ptr = data;
+                    break;
+                }
+            // fall thru
+            default:
+                // it seems that while reading the master signals the slave to stop sending by giving a nack
+                // this last byte still needs to be stored in the register
+                // remove next line if you want to ignore nack
+                if (sda ==0)
+                    device_register[device_register_ptr++] = data;
+                break;
+            }
+            byteIdx++;  // next byte
+            data = 0;   // reset this data byte
+            bitIdx = 0; // start with bit 0
             break;
-          }
-        // fall thru
-        default:
-          // it seems that while reading the master signals the slave to stop sending by giving a nack
-          // this last byte still needs to be stored in the register
-          // remove next line if you want to ignore nack
-          if (sda ==0)
-            device_register[device_register_ptr++] = data;
-          break;
-      }
-			byteIdx++;  // next byte
-      data = 0;   // reset this data byte
-			bitIdx = 0; // start with bit 0
-  		break;
 
 		case 2:
-      writing = (sda == 0);  // if SDA is LOW, the master wants to write 
-  		break;
+            writing = (sda == 0);  // if SDA is LOW, the master wants to write 
+  		    break;
 	}
 }
 
@@ -124,37 +125,40 @@ void CHT8305SnifferSensor::setup()
     PIN_SDA = sda_pin_;
 
     //reset variables
-    memset((void *) device_register, sizeof(device_register), 0);
+    memset((void *) device_register, 0, sizeof(device_register));
     i2cIdle = true;
 
     pinMode(PIN_SCL, INPUT_PULLUP);
     pinMode(PIN_SDA, INPUT_PULLUP);
 
     // Attach interrupts for SDA/SCL pins to your handler functions
-    // attachInterrupt(PIN_SCL, i2cTriggerOnRaisingSCL, RISING); //trigger for reading data from SDA
-    // attachInterrupt(PIN_SDA, i2cTriggerOnChangeSDA,  CHANGE); //for I2C START and STOP
+    attachInterrupt(PIN_SCL, i2cTriggerOnRaisingSCL, RISING); //trigger for reading data from SDA
+    attachInterrupt(PIN_SDA, i2cTriggerOnChangeSDA,  CHANGE); //for I2C START and STOP
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+// capture the RAW values when I2C is idle
+///////////////////////////////////////////////////////////////////////////////////////////////////
+void CHT8305SnifferSensor::loop() 
+{
+   if (i2cIdle) {
+     last_temperature_raw_ = (device_register[0] <<8 | device_register[1]);
+     last_humidity_raw_    = (device_register[2] <<8 | device_register[3]);
+   }
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 //
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-void CHT8305SnifferSensor::loop() 
+void CHT8305SnifferSensor::update() 
 {
-//   if (i2cIdle) {
-//     last_temperature_raw_ = (device_register[0] <<8 | device_register[1]);
-//     last_humidity_raw_    = (device_register[2] <<8 | device_register[3]);
-//   }
-  // Dummy demo values (replace with real sniffed values!)
-  last_temperature_raw_ = (last_temperature_raw_ + 123) % 65535;
-  last_humidity_raw_ = (last_humidity_raw_ + 321) % 65535;
+    float temp = (static_cast<float>(last_temperature_raw_) * 165.0f / 65535.0f) - 41.5f;
+    float hum = (static_cast<float>(last_humidity_raw_) * 100.0f / 65535.0f) + 2.2f;
 
-  float temp = (static_cast<float>(raw) * 165.0f / 65535.0f) - 45.8f;
-  float hum = (static_cast<float>(raw) * 100.0f / 65535.0f) + 2.0f;
-
-  if (temperature_sensor_ != nullptr)
-    temperature_sensor_->publish_state(temp);
-  if (humidity_sensor_ != nullptr)
-    humidity_sensor_->publish_state(hum);
+    if (temperature_sensor_ != nullptr)
+        temperature_sensor_->publish_state(temp);
+    if (humidity_sensor_ != nullptr)
+        humidity_sensor_->publish_state(hum);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////

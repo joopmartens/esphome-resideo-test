@@ -6,8 +6,9 @@
 namespace esphome {
 namespace cht8305_sniffer {
 
-class CHT8305SnifferSensor : public Component {
+class CHT8305SnifferSensor : public PollingComponent {
  public:
+  CHT8305SnifferSensor() : PollingComponent(5000) {}
   void set_temperature_sensor(sensor::Sensor *sensor) { temperature_sensor_ = sensor; }
   void set_humidity_sensor(sensor::Sensor *sensor) { humidity_sensor_ = sensor; }
   void set_sda_pin(int pin) { sda_pin_ = pin; }
@@ -15,6 +16,7 @@ class CHT8305SnifferSensor : public Component {
 
   void setup() override;
   void loop() override;
+  void update() override;
 
  protected:
   sensor::Sensor *temperature_sensor_{nullptr};
