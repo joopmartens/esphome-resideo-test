@@ -152,8 +152,8 @@ void CHT8305SnifferSensor::loop()
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void CHT8305SnifferSensor::update() 
 {
-    float temp = (static_cast<float>(last_temperature_raw_) * 165.0f / 65535.0f) - 41.5f;
-    float hum = (static_cast<float>(last_humidity_raw_) * 100.0f / 65535.0f) + 2.2f;
+    float temp = (static_cast<float>(last_temperature_raw_) * 165.0f / 65535.0f) - 40.0f + temperature_offset_;
+    float hum = (static_cast<float>(last_humidity_raw_) * 100.0f / 65535.0f) + 2.2f + humidity_offset_;
 
     if (temperature_sensor_ != nullptr)
         temperature_sensor_->publish_state(temp);
