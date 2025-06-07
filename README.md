@@ -20,7 +20,9 @@ sensor:
     temperature:
       name: "Temperature"
       filters:
-        - offset: -1.4  # Adjust temperature offset if needed
+        - calibrate_linear: # adjust temperature if needed
+          - 0.00 -> 0.00
+          - 26.5 -> 20.0
     humidity:
       name: "Humidity"
       filters:
