@@ -7,7 +7,7 @@ Custom component for ESPHome to snif traffic between the Resideo firmware and th
 
 Usage
 -----
-I noticed differences between what the Resideo displays on screen and the values received from the cht8305 sensor, converted according the the specs. The sensor should is calibrated during manufacturing so the received values should be correct. However the casing may effect the values and this may have been adjusted by Resideo (Honewell) in the firmware. You can use the offset values to adjust the values to what is show on screen, or keep the original values retrieved from the sensor.
+I noticed differences between what the Resideo displays on screen and the values received from the cht8305 sensor, converted according the the specs. The sensor should is calibrated during manufacturing so the received values should be correct. However the casing may effect the values and this may have been adjusted by Resideo (Honewell) in the firmware. You can use the offset values using the standard filters of esphome to match the values with what's displayed on screen.
 
 ```yaml
 external_components:
@@ -18,10 +18,12 @@ sensor:
   - platform: cht8305_sniffer
     temperature:
       name: "Temperature"
-      offset: -1.4  # Adjust temperature offset if needed
+      filters:
+        - offset: -1.4  # Adjust temperature offset if needed
     humidity:
       name: "Humidity"
-      offset: 0.1  # Adjust humidity offset if needed
+      filters:
+        - offset: 2.1  # Adjust humidity offset if needed
 
   - platform: cm1106_sniffer
     # update_interfval: 10s default 5s
