@@ -1,4 +1,4 @@
-Resideo ESPHome sniffers
+Honeywell Resideo R200C2-A Mod for ESPHome
 =========================
 MQTT VERSION HERE https://github.com/Pluimvee/Resideo
 
