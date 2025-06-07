@@ -1,5 +1,6 @@
-Resideo ESPHome sniffers
+Honeywell Resideo R200C2-A Mod for ESPHome
 =========================
+MQTT VERSION HERE https://github.com/Pluimvee/Resideo
 
 Custom component for ESPHome to snif traffic between the Resideo firmware and the
 - cht8305 chip (I2C) measuring humidity and temperature
@@ -26,7 +27,7 @@ sensor:
         - offset: 2.1  # Adjust humidity offset if needed
 
   - platform: cm1106_sniffer
-    # update_interfval: 10s default 5s
+    # update_interval: 10s default 5s
     name: "CO2 Level"
 ```
 
