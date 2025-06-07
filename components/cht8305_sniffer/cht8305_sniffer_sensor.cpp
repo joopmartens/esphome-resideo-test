@@ -116,7 +116,7 @@ void IRAM_ATTR i2cTriggerOnChangeSDA()
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-//
+// We set the SCL and SDA pins to the values given in the configuration
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void CHT8305SnifferSensor::setup() 
 {
@@ -137,7 +137,9 @@ void CHT8305SnifferSensor::setup()
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-// capture the RAW values when I2C is idle
+// capture the RAW values when I2C is idle. We do this in the loop() method, so we are
+// 1. fast and dont not miss any values
+// 2. independend on the update_interval
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void CHT8305SnifferSensor::loop() 
 {
@@ -148,12 +150,15 @@ void CHT8305SnifferSensor::loop()
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-//
+// This is called by the PollingComponent to update the sensor values.
+// It is called every update_interval (default 5000ms).
+// we convert the raw values based on the specifications of the CHT8305 sensor.
+// However I noticed that the values are not exactly matching the specifications, so I added a configurable offset.
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void CHT8305SnifferSensor::update() 
 {
     float temp = (static_cast<float>(last_temperature_raw_) * 165.0f / 65535.0f) - 40.0f + temperature_offset_;
-    float hum = (static_cast<float>(last_humidity_raw_) * 100.0f / 65535.0f) + 2.2f + humidity_offset_;
+    float hum = (static_cast<float>(last_humidity_raw_) * 100.0f / 65535.0f) + humidity_offset_;
 
     if (temperature_sensor_ != nullptr)
         temperature_sensor_->publish_state(temp);
