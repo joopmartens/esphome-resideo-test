@@ -25,7 +25,7 @@ sensor:
       offset: 0.1  # Adjust humidity offset if needed
 
   - platform: cm1106_sniffer
-    # update_interfval: 10s default 5s
+    # update_interval: 10s default 5s
     name: "CO2 Level"
 ```
 
