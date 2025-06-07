@@ -2,12 +2,12 @@ Resideo ESPHome sniffers
 =========================
 
 Custom component for ESPHome to snif traffic between the Resideo firmware and the
-- I2C traffic with the cht8305 chip measuring humidity and temperature
-- RS232 traffice with the cm1106 chip measuring CO2 levels
+- cht8305 chip (I2C) measuring humidity and temperature
+- cm1106 chip (RS232) measuring CO2 levels
 
 Usage
 -----
-Requires ESPHome v2022.3.0 or newer.
+I noticed differences between what the Resideo displays on screen and the values received from the cht8305 sensor, converted according the the specs. The sensor should is calibrated during manufacturing so the received values should be correct. However the casing may effect the values and this may have been adjusted by Resideo (Honewell) in the firmware. You can use the offset values to adjust the values to what is show on screen, or keep the original values retrieved from the sensor.
 
 ```yaml
 external_components:
@@ -27,8 +27,6 @@ sensor:
     # update_interfval: 10s default 5s
     name: "CO2 Level"
 ```
-
-I noticed differences between what the Resideo displays on screen and the values received from the cht8305 sensor, converted according the the specs. The sensor should is calibrated during manufacturing so the received values should be correct. However the casing may effect the values and this may have been adjusted by Resideo (Honewell) in the firmware. You can use the offset values to adjust the values to what is show on screen, or keep the original values retrieved from the sensor.
 
 NOTE
 -----
