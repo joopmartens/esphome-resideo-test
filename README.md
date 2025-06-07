@@ -1,5 +1,6 @@
 Resideo ESPHome sniffers
 =========================
+MQTT VERSION HERE https://github.com/Pluimvee/Resideo
 
 Custom component for ESPHome to snif traffic between the Resideo firmware and the
 - cht8305 chip (I2C) measuring humidity and temperature
