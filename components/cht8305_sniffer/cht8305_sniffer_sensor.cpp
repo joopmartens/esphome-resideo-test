@@ -33,7 +33,7 @@ namespace cht8305_sniffer
     // A NACK will end our sniffing session
     // this may happen on first (slave) byte, by which the slave donts want to communicate (not ready)
     // or on the second byte (register address) when the master is writing and the slave does not want to accept the register address
-    // or on the last byte when the master is reading and the slave does not want to send more data.
+    // or on the last byte when the master is reading and does not want more data.
     #define I2C_HANDLE_NACK if (sda > 0) { i2cIdle = true; return; }
     
     // Rising SCL makes us reading the SDA pin
