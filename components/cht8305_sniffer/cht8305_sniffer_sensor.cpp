@@ -39,7 +39,7 @@ namespace cht8305_sniffer
     // Rising SCL makes us reading the SDA pin
     void IRAM_ATTR i2cTriggerOnRaisingSCL()
     {
-        if (i2cIdle) // we didnt get a start signal yet
+        if (i2cIdle) // we didnt get a start signal yet or we stopped listening
             return;
 
         // get the value from SDA
