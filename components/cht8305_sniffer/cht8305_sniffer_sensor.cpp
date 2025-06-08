@@ -30,6 +30,12 @@ namespace cht8305_sniffer
     ///////////////////////////////////////////////////////////////////////////////////////////////////
     //// Interrupt handlers
     ///////////////////////////////////////////////////////////////////////////////////////////////////
+    // A NACK will end our sniffing session
+    // this may happen on first (slave) byte, by which the slave donts want to communicate (not ready)
+    // or on the second byte (register address) when the master is writing and the slave does not want to accept the register address
+    // or on the last byte when the master is reading and the slave does not want to send more data.
+    #define I2C_HANDLE_NACK if (sda > 0) { i2cIdle = true; return; }
+    
     // Rising SCL makes us reading the SDA pin
     void IRAM_ATTR i2cTriggerOnRaisingSCL()
     {
@@ -48,20 +54,22 @@ namespace cht8305_sniffer
 
         else // we are at the ninth (N)ACK bit
         {
-            if (sda > 0) {  // SDA HIGH -> NACK
-                i2cIdle = true; // end conversation
-                return;
-            }
-            if (byteIdx == 0) //slave address byte
+            if (byteIdx == 0)   //slave address byte
+            {
+                I2C_HANDLE_NACK; // On NACK we end the conversation as the slave declined end a restart (Sr) is expected
                 device_address = data;
-
+            }
             else if (byteIdx == 1 && writing) // if the master is writing, the second byte is the register address
+            {   
+                I2C_HANDLE_NACK; // On NACK we end the conversation as the slave declined the address, so we dont know which address will be used
                 // its safe to just store the data in the ptr as it will never reach beyond the 256 byte limit
                 device_register_ptr = data;
-        
-            else 
+            }        
+            else
+            {   // we always store the data, even on a NACK (which indicates end of reading)
                 device_register[device_register_ptr++] = data;
-
+                I2C_HANDLE_NACK; // On NACK we end the conversation AFTER storing the data. 
+            }
             byteIdx++;   // go to the next byte
             data = 0;    // reset this data byte value
             bitIdx = -1; // and restart with bit 0 (set to -1 as we will be incrementing it at the end of this function)
@@ -74,8 +82,8 @@ namespace cht8305_sniffer
      * This is for recognizing I2C START and STOP
      * This is called when the SDA line is changing
      * It is decided inside the function wheather it is a rising or falling change.
-     * If SCL is on High then the falling change is a START and the rising is a STOP.
-     * If SCL is LOW, then this is the action to set a data bit, so nothing to do.
+     * If SCL is HIGH then the falling change is a START and the rising is a STOP.
+     * If SCL is LOW, then this event is an action to set a data bit, so nothing to do.
      */
     void IRAM_ATTR i2cTriggerOnChangeSDA()
     {
