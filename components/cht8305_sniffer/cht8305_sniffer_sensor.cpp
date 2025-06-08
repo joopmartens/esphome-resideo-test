@@ -9,165 +9,149 @@
 
 #include "cht8305_sniffer_sensor.h"
 
-namespace esphome {
-namespace cht8305_sniffer {
-
-///////////////////////////////////////////////////////////////////////////////////////////////////
-static volatile byte device_address;
-static volatile byte device_register[256];
-static volatile byte device_register_ptr;
-
-static volatile bool i2cIdle = true;  // true if the I2C BUS is idle
-static volatile int bitIdx  = 0;      // the bitindex within the frame
-static volatile int byteIdx = 0;      // nr of bytes within tis frame
-static volatile byte data = 0;        // the byte under construction, which will persited in device_register when acknowledged
-static volatile bool writing = true;  // is the master reading or writing to the device
-static int PIN_SCL = 5;               // default ESP8266 D1
-static int PIN_SDA = 4;               // default ESP8266 D2
-
-///////////////////////////////////////////////////////////////////////////////////////////////////
-//// Interrupt handlers
-///////////////////////////////////////////////////////////////////////////////////////////////////
-// Rising SCL makes us reading the SDA pin
-void IRAM_ATTR i2cTriggerOnRaisingSCL() 
+namespace esphome
 {
-  if (i2cIdle)    // we didnt get a start signal yet
-    return;
+namespace cht8305_sniffer
+{
 
-	//get the value from SDA
-	int sda = digitalRead(PIN_SDA);
+    ///////////////////////////////////////////////////////////////////////////////////////////////////
+    static volatile byte device_address;
+    static volatile byte device_register[256];
+    static volatile byte device_register_ptr;
 
-	//decide where we are and what to do with incoming data
-	int i2cCase = 0;    // data bit
+    static volatile bool i2cIdle = true; // true if the I2C BUS is idle
+    static volatile int bitIdx = 0;      // the bitindex within the frame
+    static volatile int byteIdx = 0;     // nr of bytes within tis frame
+    static volatile byte data = 0;       // the byte under construction, which will persited in device_register when acknowledged
+    static volatile bool writing = true; // is the master reading or writing to the device
+    static int PIN_SCL = 5;              // default ESP8266 D1
+    static int PIN_SDA = 4;              // default ESP8266 D2
 
-	if (bitIdx == 8)    // we are already at 8 bits, so this is the (N)ACK bit
-		i2cCase = 1; 
+    ///////////////////////////////////////////////////////////////////////////////////////////////////
+    //// Interrupt handlers
+    ///////////////////////////////////////////////////////////////////////////////////////////////////
+    // Rising SCL makes us reading the SDA pin
+    void IRAM_ATTR i2cTriggerOnRaisingSCL()
+    {
+        if (i2cIdle) // we didnt get a start signal yet
+            return;
 
-	if (bitIdx == 7 && byteIdx == 0 ) // first byte is 7bits address, 8th bit is R/W
-		i2cCase = 2;
+        // get the value from SDA
+        int sda = digitalRead(PIN_SDA);
 
- 	bitIdx++; // we found the first bit (out of the switch as its also needed for case 2!)
+        // first byte is 7bits address, 8th bit is R/W
+        if (byteIdx == 0 && bitIdx == 7)
+            writing = (sda == 0); // if SDA is LOW, the master wants to write
+        
+        else if (bitIdx != 8) // data bit
+            data = (data << 1) | (sda > 0 ? 1 : 0);
 
-	switch (i2cCase)
-	{
-        default:
-		case 0: // data bit
-            data = (data << 1) | (sda>0?1:0);
-	   	    break;//end of case 0 general
-
-		case 1: //(N)ACK
-            switch (byteIdx)
-            {
-            case 0:
-                if (sda == 0) // SDA LOW ->  ACK 
-                    device_address = data;
-                break;
-                
-            case 1:
-                if (writing && sda == 0) {  // if the master is writing, the first byte is the address in the device registers
-                    device_register_ptr = data;
-                    break;
-                }
-            // fall thru
-            default:
-                // it seems that while reading the master signals the slave to stop sending by giving a nack
-                // this last byte still needs to be stored in the register
-                // remove next line if you want to ignore nack
-                if (sda ==0)
-                    device_register[device_register_ptr++] = data;
-                break;
+        else // we are at the ninth (N)ACK bit
+        {
+            if (sda > 0) {  // SDA HIGH -> NACK
+                i2cIdle = true; // end conversation
+                return;
             }
-            byteIdx++;  // next byte
-            data = 0;   // reset this data byte
-            bitIdx = 0; // start with bit 0
-            break;
+            if (byteIdx == 0) //slave address byte
+                device_address = data;
 
-		case 2:
-            writing = (sda == 0);  // if SDA is LOW, the master wants to write 
-  		    break;
-	}
-}
+            else if (byteIdx == 1 && writing) // if the master is writing, the second byte is the register address
+                // its safe to just store the data in the ptr as it will never reach beyond the 256 byte limit
+                device_register_ptr = data;
+        
+            else 
+                device_register[device_register_ptr++] = data;
 
-/**
- * This is for recognizing I2C START and STOP
- * This is called when the SDA line is changing
- * It is decided inside the function wheather it is a rising or falling change.
- * If SCL is on High then the falling change is a START and the rising is a STOP.
- * If SCL is LOW, then this is the action to set a data bit, so nothing to do.
- */
-void IRAM_ATTR i2cTriggerOnChangeSDA()
-{
-  if (digitalRead(PIN_SCL) == 0)  // if SCL is low we are still communicating
-    return;
+            byteIdx++;   // go to the next byte
+            data = 0;    // reset this data byte value
+            bitIdx = -1; // and restart with bit 0 (set to -1 as we will be incrementing it at the end of this function)
+        }
+        // go to the next bit
+        bitIdx++; 
+    }
 
-	if (digitalRead(PIN_SDA) > 0) //RISING if SDA is HIGH (1) -> STOP 
-		i2cIdle = true;
-	else //FALLING if SDA is LOW -> START?
-	{
-		if (i2cIdle) //If we are idle than this is a START
-		{
-			bitIdx  = 0;
-			byteIdx = 0;
-            data = 0;
-            device_register_ptr = 0;
-			i2cIdle = false;
-		}
-	}
-}
+    /**
+     * This is for recognizing I2C START and STOP
+     * This is called when the SDA line is changing
+     * It is decided inside the function wheather it is a rising or falling change.
+     * If SCL is on High then the falling change is a START and the rising is a STOP.
+     * If SCL is LOW, then this is the action to set a data bit, so nothing to do.
+     */
+    void IRAM_ATTR i2cTriggerOnChangeSDA()
+    {
+        if (digitalRead(PIN_SCL) == 0) // if SCL is low we are still communicating
+            return;
 
-///////////////////////////////////////////////////////////////////////////////////////////////////
-// We set the SCL and SDA pins to the values given in the configuration
-///////////////////////////////////////////////////////////////////////////////////////////////////
-void CHT8305SnifferSensor::setup() 
-{
-    // Use configurable pins!
-    PIN_SCL = scl_pin_;
-    PIN_SDA = sda_pin_;
+        if (digitalRead(PIN_SDA) > 0) // RISING if SDA is HIGH (1) -> STOP
+            i2cIdle = true;
+        else // FALLING if SDA is LOW -> START?
+        {
+            if (i2cIdle) // If we are idle than this is a START
+            {
+                bitIdx = 0;
+                byteIdx = 0;
+                data = 0;
+                i2cIdle = false;
+                // we dont reset the register_ptr as it may have been set to prepare for reading!!!
+            }
+        }
+    }
 
-    //reset variables
-    memset((void *) device_register, 0, sizeof(device_register));
-    i2cIdle = true;
+    ///////////////////////////////////////////////////////////////////////////////////////////////////
+    // We set the SCL and SDA pins to the values given in the configuration
+    ///////////////////////////////////////////////////////////////////////////////////////////////////
+    void CHT8305SnifferSensor::setup()
+    {
+        // Use configurable pins!
+        PIN_SCL = scl_pin_;
+        PIN_SDA = sda_pin_;
 
-    pinMode(PIN_SCL, INPUT_PULLUP);
-    pinMode(PIN_SDA, INPUT_PULLUP);
+        // reset variables
+        memset((void *)device_register, 0, sizeof(device_register));
+        i2cIdle = true;
+        device_register_ptr = 0; // the pointer will be initially set to 0
 
-    // Attach interrupts for SDA/SCL pins to your handler functions
-    attachInterrupt(PIN_SCL, i2cTriggerOnRaisingSCL, RISING); //trigger for reading data from SDA
-    attachInterrupt(PIN_SDA, i2cTriggerOnChangeSDA,  CHANGE); //for I2C START and STOP
-}
+        pinMode(PIN_SCL, INPUT_PULLUP);
+        pinMode(PIN_SDA, INPUT_PULLUP);
 
-///////////////////////////////////////////////////////////////////////////////////////////////////
-// capture the RAW values when I2C is idle. We do this in the loop() method, so we are
-// 1. fast and dont not miss any values
-// 2. independend on the update_interval
-///////////////////////////////////////////////////////////////////////////////////////////////////
-void CHT8305SnifferSensor::loop() 
-{
-   if (i2cIdle) {
-     last_temperature_raw_ = (device_register[0] <<8 | device_register[1]);
-     last_humidity_raw_    = (device_register[2] <<8 | device_register[3]);
-   }
-}
+        // Attach interrupts for SDA/SCL pins to your handler functions
+        attachInterrupt(PIN_SCL, i2cTriggerOnRaisingSCL, RISING); // trigger for reading data from SDA
+        attachInterrupt(PIN_SDA, i2cTriggerOnChangeSDA, CHANGE);  // for I2C START and STOP
+    }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////
-// This is called by the PollingComponent to update the sensor values.
-// It is called every update_interval (default 5000ms).
-// we convert the raw values based on the specifications of the CHT8305 sensor.
-// However I noticed that the values are not exactly matching the specifications, so I added a configurable offset.
-///////////////////////////////////////////////////////////////////////////////////////////////////
-void CHT8305SnifferSensor::update() 
-{
-    float temp = (static_cast<float>(last_temperature_raw_) * 165.0f / 65535.0f) - 40.0f;
-    float hum = (static_cast<float>(last_humidity_raw_) * 100.0f / 65535.0f);
+    ///////////////////////////////////////////////////////////////////////////////////////////////////
+    // capture the RAW values when I2C is idle. We do this in the loop() method, so we are
+    // 1. fast and dont not miss any values
+    // 2. independend on the update_interval
+    ///////////////////////////////////////////////////////////////////////////////////////////////////
+    void CHT8305SnifferSensor::loop()
+    {
+        if (i2cIdle)
+        {
+            last_temperature_raw_ = (device_register[0] << 8 | device_register[1]);
+            last_humidity_raw_ = (device_register[2] << 8 | device_register[3]);
+        }
+    }
 
-    if (temperature_sensor_ != nullptr)
-        temperature_sensor_->publish_state(temp);
-    if (humidity_sensor_ != nullptr)
-        humidity_sensor_->publish_state(hum);
-}
+    ///////////////////////////////////////////////////////////////////////////////////////////////////
+    // This is called by the PollingComponent to update the sensor values.
+    // It is called every update_interval (default 5000ms).
+    // we convert the raw values based on the specifications of the CHT8305 sensor.
+    // However I noticed that the values are not exactly matching the specifications, so I added a configurable offset.
+    ///////////////////////////////////////////////////////////////////////////////////////////////////
+    void CHT8305SnifferSensor::update()
+    {
+        float temp = (static_cast<float>(last_temperature_raw_) * 165.0f / 65535.0f) - 40.0f;
+        float hum = (static_cast<float>(last_humidity_raw_) * 100.0f / 65535.0f);
 
-///////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////
+        if (temperature_sensor_ != nullptr)
+            temperature_sensor_->publish_state(temp);
+        if (humidity_sensor_ != nullptr)
+            humidity_sensor_->publish_state(hum);
+    }
 
-}  // namespace cht8305_sniffer
-}  // namespace esphome
+    ///////////////////////////////////////////////////////////////////////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////////////////////////////////
+
+} // namespace cht8305_sniffer
+} // namespace esphome

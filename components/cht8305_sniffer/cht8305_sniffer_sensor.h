@@ -7,7 +7,7 @@ namespace esphome {
 namespace cht8305_sniffer {
 
 class CHT8305SnifferSensor : public PollingComponent {
- public:
+public:
   CHT8305SnifferSensor() : PollingComponent(5000) {}
   void set_temperature_sensor(sensor::Sensor *sensor) { temperature_sensor_ = sensor; }
   void set_humidity_sensor(sensor::Sensor *sensor) { humidity_sensor_ = sensor; }
@@ -18,7 +18,7 @@ class CHT8305SnifferSensor : public PollingComponent {
   void loop() override;
   void update() override;
 
- protected:
+protected:
   sensor::Sensor *temperature_sensor_{nullptr};
   sensor::Sensor *humidity_sensor_{nullptr};
   int sda_pin_{4}; // Default ESP8266 D2

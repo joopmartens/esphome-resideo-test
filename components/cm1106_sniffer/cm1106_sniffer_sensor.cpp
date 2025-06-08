@@ -48,16 +48,16 @@ void CM1106SnifferSensor::loop()
   // find the start of the message
   int matched = 0;
   while (matched < sizeof(expected_header)) {
-      if (Serial.available()) {
-        Serial.readBytes(response + matched, 1);
-      } else {
-        return; // exit if we didnt find the header and uart queue is empty
-      }
-      if (response[matched] == expected_header[matched]) {
-        matched++;
-      } else {
-        matched = 0; // reset if we don't match
-      }
+    if (Serial.available()) {
+      Serial.readBytes(response + matched, 1);
+    } else {
+      return; // exit if we didnt find the header and uart queue is empty
+    }
+    if (response[matched] == expected_header[matched]) {
+      matched++;
+    } else {
+      matched = 0; // reset if we don't match
+    }
   }
   // if we end up here we have found the header
   available = Serial.available();
@@ -85,7 +85,7 @@ void CM1106SnifferSensor::loop()
 // Publish the cached PPM value to the frontend. 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void CM1106SnifferSensor::update() {
-    this->publish_state(cached_ppm_);
+  this->publish_state(cached_ppm_);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
