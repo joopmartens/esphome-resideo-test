@@ -132,12 +132,21 @@ namespace cht8305_sniffer
     // 1. fast and dont not miss any values
     // 2. independend on the update_interval
     ///////////////////////////////////////////////////////////////////////////////////////////////////
+    unsigned long last_sample_time = 0;
+
     void CHT8305SnifferSensor::loop()
     {
-        if (i2cIdle)
+        unsigned long now = millis();
+        if (i2cIdle && (now - last_sample_time > 100))
         {
-            last_temperature_raw_ = (device_register[0] << 8 | device_register[1]);
-            last_humidity_raw_ = (device_register[2] << 8 | device_register[3]);
+            last_sample_time = now; // update the last sample time
+            // copy into local variables as quick as possible
+            uint16_t temp = device_register[0] << 8 | device_register[1];
+            uint16_t humidity = device_register[2] << 8 | device_register[3];
+
+            // now store the values in the raw data buffers
+            temperature_raw_.push_back(temp);
+            humidity_raw_.push_back(humidity);
         }
     }
 
@@ -149,8 +158,26 @@ namespace cht8305_sniffer
     ///////////////////////////////////////////////////////////////////////////////////////////////////
     void CHT8305SnifferSensor::update()
     {
-        float temp = (static_cast<float>(last_temperature_raw_) * 165.0f / 65535.0f) - 40.0f;
-        float hum = (static_cast<float>(last_humidity_raw_) * 100.0f / 65535.0f);
+        if (temperature_raw_.empty() || humidity_raw_.empty())
+        {
+            ESP_LOGW("cht8305_sniffer", "No data available to update sensors.");
+            return;
+        }
+        ESP_LOGD("cht8305_sniffer", "Taking the mean from a window size %d", temperature_raw_.size());
+        // sort the raw data to calculate the median
+        std::sort(temperature_raw_.begin(), temperature_raw_.end());
+        std::sort(humidity_raw_.begin(), humidity_raw_.end());
+        
+        // Calculate the median of the raw values
+        uint16_t temp_median = temperature_raw_[temperature_raw_.size() / 2];
+        uint16_t hum_median = humidity_raw_[humidity_raw_.size() / 2];
+
+        float temp = (static_cast<float>(temp_median)* 165.0f / 65535.0f) - 40.0f;
+        float hum = (static_cast<float>(hum_median) * 100.0f / 65535.0f);
+
+        // Clear the raw data after processing
+        temperature_raw_.clear();
+        humidity_raw_.clear();
 
         if (temperature_sensor_ != nullptr)
             temperature_sensor_->publish_state(temp);

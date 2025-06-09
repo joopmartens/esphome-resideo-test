@@ -23,9 +23,9 @@ protected:
   sensor::Sensor *humidity_sensor_{nullptr};
   int sda_pin_{4}; // Default ESP8266 D2
   int scl_pin_{5}; // Default ESP8266 D1
-  // Raw register storage, mimicking your sniffer state (minimalistic example)
-  uint16_t last_temperature_raw_{0};
-  uint16_t last_humidity_raw_{0};
+  // Raw register storage
+  std::vector<uint16_t> temperature_raw_;
+  std::vector<uint16_t> humidity_raw_;
 };
 
 }  // namespace cht8305_sniffer
