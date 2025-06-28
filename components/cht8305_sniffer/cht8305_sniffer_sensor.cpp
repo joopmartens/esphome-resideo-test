@@ -154,7 +154,6 @@ namespace cht8305_sniffer
     // This is called by the PollingComponent to update the sensor values.
     // It is called every update_interval (default 5000ms).
     // we convert the raw values based on the specifications of the CHT8305 sensor.
-    // However I noticed that the values are not exactly matching the specifications, so I added a configurable offset.
     ///////////////////////////////////////////////////////////////////////////////////////////////////
     void CHT8305SnifferSensor::update()
     {

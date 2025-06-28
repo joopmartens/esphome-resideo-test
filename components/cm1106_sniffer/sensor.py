@@ -18,7 +18,7 @@ CONFIG_SCHEMA = sensor.sensor_schema(
     state_class='measurement',
 ).extend({
     cv.GenerateID(): cv.declare_id(CM1106Sniffer),
-}).extend(cv.COMPONENT_SCHEMA)
+}).extend(cv.polling_component_schema("5s"))
 
 async def to_code(config):
     var = await sensor.new_sensor(config)

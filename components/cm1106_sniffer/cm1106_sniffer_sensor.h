@@ -1,3 +1,7 @@
+/**
+  @AUTHOR (c) 2025 Pluimvee (Erik Veer)
+
+ */
 #pragma once
 
 #include "esphome/core/component.h"
@@ -12,7 +16,9 @@ public:
   void setup() override;
   void loop() override;
   void update() override;
-
+  void dump_config() override {
+    ESP_LOGCONFIG("Resideo", "CM1106 Sniffer (C)Pluimvee");
+  };
 protected:
   uint16_t cached_ppm_{0};
 };

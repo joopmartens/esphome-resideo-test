@@ -1,3 +1,7 @@
+/**
+  @AUTHOR (c) 2025 Pluimvee (Erik Veer)
+
+ */
 #pragma once
 
 #include "esphome/core/component.h"
@@ -17,6 +21,9 @@ public:
   void setup() override;
   void loop() override;
   void update() override;
+  void dump_config() override {
+    ESP_LOGCONFIG("Resideo", "CHT8305 Sniffer (C)Pluimvee");
+  };
 
 protected:
   sensor::Sensor *temperature_sensor_{nullptr};
