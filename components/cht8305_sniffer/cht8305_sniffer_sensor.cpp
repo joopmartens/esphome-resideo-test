@@ -1,191 +1,166 @@
 /**
-  @AUTHOR (c) 2025 Pluimvee (Erik Veer)
-
-  Specifications CHT8305 T/H Sensor
-  Oct 2017 rev 1.1 SENSYLINK MIcroelectronics Co. LTD
-  https://www.semiee.com/file/Sensylink/Sensylink-CHT8305.pdf
-
+ * Specifications CHT8305 T/H Sensor
+ * Oct 2017 rev 1.1 SENSYLINK MIcroelectronics Co. LTD
+ * https://www.semiee.com/file/Sensylink/Sensylink-CHT8305.pdf
  */
 
 #include "cht8305_sniffer_sensor.h"
+#include <freertos/FreeRTOS.h>
+#include <driver/gpio.h>
+#include <esp_log.h>
+#include <vector>
+#include <algorithm>
+#include <string.h>
 
-namespace esphome
-{
-namespace cht8305_sniffer
-{
+namespace esphome {
+namespace cht8305_sniffer {
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////////
-    static volatile byte device_address;
-    static volatile byte device_register[256];
-    static volatile byte device_register_ptr;
+static const char *TAG = "cht8305_sniffer";
 
-    static volatile bool i2cIdle = true; // true if the I2C BUS is idle
-    static volatile int bitIdx = 0;      // the bitindex within the frame
-    static volatile int byteIdx = 0;     // nr of bytes within tis frame
-    static volatile byte data = 0;       // the byte under construction, which will persited in device_register when acknowledged
-    static volatile bool writing = true; // is the master reading or writing to the device
-    static int PIN_SCL = 5;              // default ESP8266 D1
-    static int PIN_SDA = 4;              // default ESP8266 D2
+// Global pointer to the class instance to allow ISRs (C functions) to access class members.
+static CHT8305SnifferSensor *global_instance = nullptr;
 
-    ///////////////////////////////////////////////////////////////////////////////////////////////////
-    //// Interrupt handlers
-    ///////////////////////////////////////////////////////////////////////////////////////////////////
-    // A NACK will end our sniffing session
-    // this may happen on first (slave) byte, by which the slave donts want to communicate (not ready)
-    // or on the second byte (register address) when the master is writing and the slave does not want to accept the register address
-    // or on the last byte when the master is reading and does not want more data.
-    #define I2C_HANDLE_NACK if (sda > 0) { i2cIdle = true; return; }
+// A NACK will end our sniffing session.
+#define I2C_HANDLE_NACK if (gpio_get_level(global_instance->pin_sda_) > 0) { global_instance->i2c_idle_ = true; return; }
+
+// Rising SCL makes us reading the SDA pin. This is our ISR handler.
+void IRAM_ATTR i2cTriggerOnRaisingSCL(void *arg) {
+    if (global_instance->i2c_idle_) {
+        return;
+    }
+
+    // Get the value from SDA using the ESP-IDF function.
+    int sda_val = gpio_get_level(global_instance->pin_sda_);
+
+    // First byte is 7-bit address, 8th bit is R/W.
+    if (global_instance->byte_idx_ == 0 && global_instance->bit_idx_ == 7) {
+        global_instance->writing_ = (sda_val == 0); // if SDA is LOW, the master wants to write.
+    } else if (global_instance->bit_idx_ != 8) { // data bit.
+        global_instance->data_ = (global_instance->data_ << 1) | (sda_val > 0 ? 1 : 0);
+    } else { // We are at the ninth (N)ACK bit.
+        if (global_instance->byte_idx_ == 0) {  // Slave address byte.
+            I2C_HANDLE_NACK; // On NACK we end the conversation as the slave declined.
+            global_instance->device_address_ = global_instance->data_;
+        } else if (global_instance->byte_idx_ == 1 && global_instance->writing_) { // If the master is writing, the second byte is the register address.
+            I2C_HANDLE_NACK; // On NACK we end the conversation as the slave declined the address.
+            global_instance->device_register_ptr_ = global_instance->data_;
+        } else {
+            global_instance->device_register_[global_instance->device_register_ptr_++] = global_instance->data_;
+            I2C_HANDLE_NACK; // On NACK we end the conversation AFTER storing the data.
+        }
+        global_instance->byte_idx_++;
+        global_instance->data_ = 0;
+        global_instance->bit_idx_ = -1;
+    }
+    global_instance->bit_idx_++;
+}
+
+/**
+ * This is for recognizing I2C START and STOP.
+ * We must check the state of both SCL and SDA at the moment of the interrupt.
+ * If SCL is HIGH, a falling edge on SDA is a START, and a rising edge is a STOP.
+ */
+void IRAM_ATTR i2cTriggerOnChangeSDA(void *arg) {
+    if (gpio_get_level(global_instance->pin_scl_) == 0) {
+        return;
+    }
+
+    if (gpio_get_level(global_instance->pin_sda_) > 0) { // RISING if SDA is HIGH (1) -> STOP.
+        global_instance->i2c_idle_ = true;
+    } else { // FALLING if SDA is LOW -> START?
+        if (global_instance->i2c_idle_) { // If we are idle, this is a START.
+            global_instance->bit_idx_ = 0;
+            global_instance->byte_idx_ = 0;
+            global_instance->data_ = 0;
+            global_instance->i2c_idle_ = false;
+        }
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+// CHT8305SnifferSensor Class Implementation
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+void CHT8305SnifferSensor::setup() {
+    global_instance = this;
+
+    this->pin_scl_ = (gpio_num_t)this->scl_pin_;
+    this->pin_sda_ = (gpio_num_t)this->sda_pin_;
+
+    // Reset variables.
+    memset((void *)this->device_register_, 0, sizeof(this->device_register_));
+    this->i2c_idle_ = true;
+    this->device_register_ptr_ = 0;
+
+    // Configure GPIOs using ESP-IDF functions.
+    gpio_config_t scl_config = {
+        .pin_bit_mask = (1ULL << this->pin_scl_),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_POSEDGE // Interrupt on rising edge of SCL.
+    };
+    gpio_config(&scl_config);
+
+    gpio_config_t sda_config = {
+        .pin_bit_mask = (1ULL << this->pin_sda_),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_ANYEDGE // Interrupt on any edge of SDA.
+    };
+    gpio_config(&sda_config);
+
+    // Install the global GPIO ISR service.
+    ESP_ERROR_CHECK(gpio_install_isr_service(0));
+
+    // Add the specific handlers for each pin.
+    ESP_ERROR_CHECK(gpio_isr_handler_add(this->pin_scl_, i2cTriggerOnRaisingSCL, nullptr));
+    ESP_ERROR_CHECK(gpio_isr_handler_add(this->pin_sda_, i2cTriggerOnChangeSDA, nullptr));
+
+    ESP_LOGI(TAG, "CHT8305 Sniffer initialized on SCL:%d, SDA:%d", (int)this->pin_scl_, (int)this->pin_sda_);
+}
+
+void CHT8305SnifferSensor::loop() {
+    unsigned long now = millis();
+    if (this->i2c_idle_ && (now - this->last_sample_time_ > 100)) {
+        this->last_sample_time_ = now;
+        uint16_t temp = (uint16_t)this->device_register_[0] << 8 | this->device_register_[1];
+        uint16_t humidity = (uint16_t)this->device_register_[2] << 8 | this->device_register_[3];
+
+        this->temperature_raw_.push_back(temp);
+        this->humidity_raw_.push_back(humidity);
+    }
+}
+
+void CHT8305SnifferSensor::update() {
+    if (this->temperature_raw_.empty() || this->humidity_raw_.empty()) {
+        ESP_LOGW(TAG, "No data available to update sensors.");
+        return;
+    }
+    ESP_LOGD(TAG, "Taking the mean from a window size %d", this->temperature_raw_.size());
+    std::sort(this->temperature_raw_.begin(), this->temperature_raw_.end());
+    std::sort(this->humidity_raw_.begin(), this->humidity_raw_.end());
     
-    // Rising SCL makes us reading the SDA pin
-    void IRAM_ATTR i2cTriggerOnRaisingSCL()
-    {
-        if (i2cIdle) // we didnt get a start signal yet or we stopped listening
-            return;
+    uint16_t temp_median = this->temperature_raw_[this->temperature_raw_.size() / 2];
+    uint16_t hum_median = this->humidity_raw_[this->humidity_raw_.size() / 2];
 
-        // get the value from SDA
-        int sda = digitalRead(PIN_SDA);
+    float temp = (static_cast<float>(temp_median) * 165.0f / 65535.0f) - 40.0f;
+    float hum = (static_cast<float>(hum_median) * 100.0f / 65535.0f);
 
-        // first byte is 7bits address, 8th bit is R/W
-        if (byteIdx == 0 && bitIdx == 7)
-            writing = (sda == 0); // if SDA is LOW, the master wants to write
-        
-        else if (bitIdx != 8) // data bit
-            data = (data << 1) | (sda > 0 ? 1 : 0);
+    this->temperature_raw_.clear();
+    this->humidity_raw_.clear();
 
-        else // we are at the ninth (N)ACK bit
-        {
-            if (byteIdx == 0)   //slave address byte
-            {
-                I2C_HANDLE_NACK; // On NACK we end the conversation as the slave declined end a restart (Sr) is expected
-                device_address = data;
-            }
-            else if (byteIdx == 1 && writing) // if the master is writing, the second byte is the register address
-            {   
-                I2C_HANDLE_NACK; // On NACK we end the conversation as the slave declined the address, so we dont know which address will be used
-                // its safe to just store the data in the ptr as it will never reach beyond the 256 byte limit
-                device_register_ptr = data;
-            }        
-            else
-            {   // we always store the data, even on a NACK (which indicates end of reading)
-                device_register[device_register_ptr++] = data;
-                I2C_HANDLE_NACK; // On NACK we end the conversation AFTER storing the data. 
-            }
-            byteIdx++;   // go to the next byte
-            data = 0;    // reset this data byte value
-            bitIdx = -1; // and restart with bit 0 (set to -1 as we will be incrementing it at the end of this function)
-        }
-        // go to the next bit
-        bitIdx++; 
-    }
+    if (this->temperature_sensor_ != nullptr)
+        this->temperature_sensor_->publish_state(temp);
+    if (this->humidity_sensor_ != nullptr)
+        this->humidity_sensor_->publish_state(hum);
+}
 
-    /**
-     * This is for recognizing I2C START and STOP
-     * This is called when the SDA line is changing
-     * It is decided inside the function wheather it is a rising or falling change.
-     * If SCL is HIGH then the falling change is a START and the rising is a STOP.
-     * If SCL is LOW, then this event is an action to set a data bit, so nothing to do.
-     */
-    void IRAM_ATTR i2cTriggerOnChangeSDA()
-    {
-        if (digitalRead(PIN_SCL) == 0) // if SCL is low we are still communicating
-            return;
-
-        if (digitalRead(PIN_SDA) > 0) // RISING if SDA is HIGH (1) -> STOP
-            i2cIdle = true;
-        else // FALLING if SDA is LOW -> START?
-        {
-            if (i2cIdle) // If we are idle than this is a START
-            {
-                bitIdx = 0;
-                byteIdx = 0;
-                data = 0;
-                i2cIdle = false;
-                // we dont reset the register_ptr as it may have been set to prepare for reading!!!
-            }
-        }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////////
-    // We set the SCL and SDA pins to the values given in the configuration
-    ///////////////////////////////////////////////////////////////////////////////////////////////////
-    void CHT8305SnifferSensor::setup()
-    {
-        // Use configurable pins!
-        PIN_SCL = scl_pin_;
-        PIN_SDA = sda_pin_;
-
-        // reset variables
-        memset((void *)device_register, 0, sizeof(device_register));
-        i2cIdle = true;
-        device_register_ptr = 0; // the pointer will be initially set to 0
-
-        pinMode(PIN_SCL, INPUT_PULLUP);
-        pinMode(PIN_SDA, INPUT_PULLUP);
-
-        // Attach interrupts for SDA/SCL pins to your handler functions
-        attachInterrupt(PIN_SCL, i2cTriggerOnRaisingSCL, RISING); // trigger for reading data from SDA
-        attachInterrupt(PIN_SDA, i2cTriggerOnChangeSDA, CHANGE);  // for I2C START and STOP
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////////
-    // capture the RAW values when I2C is idle. We do this in the loop() method, so we are
-    // 1. fast and dont not miss any values
-    // 2. independend on the update_interval
-    ///////////////////////////////////////////////////////////////////////////////////////////////////
-    unsigned long last_sample_time = 0;
-
-    void CHT8305SnifferSensor::loop()
-    {
-        unsigned long now = millis();
-        if (i2cIdle && (now - last_sample_time > 100))
-        {
-            last_sample_time = now; // update the last sample time
-            // copy into local variables as quick as possible
-            uint16_t temp = device_register[0] << 8 | device_register[1];
-            uint16_t humidity = device_register[2] << 8 | device_register[3];
-
-            // now store the values in the raw data buffers
-            temperature_raw_.push_back(temp);
-            humidity_raw_.push_back(humidity);
-        }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////////
-    // This is called by the PollingComponent to update the sensor values.
-    // It is called every update_interval (default 5000ms).
-    // we convert the raw values based on the specifications of the CHT8305 sensor.
-    ///////////////////////////////////////////////////////////////////////////////////////////////////
-    void CHT8305SnifferSensor::update()
-    {
-        if (temperature_raw_.empty() || humidity_raw_.empty())
-        {
-            ESP_LOGW("cht8305_sniffer", "No data available to update sensors.");
-            return;
-        }
-        ESP_LOGD("cht8305_sniffer", "Taking the mean from a window size %d", temperature_raw_.size());
-        // sort the raw data to calculate the median
-        std::sort(temperature_raw_.begin(), temperature_raw_.end());
-        std::sort(humidity_raw_.begin(), humidity_raw_.end());
-        
-        // Calculate the median of the raw values
-        uint16_t temp_median = temperature_raw_[temperature_raw_.size() / 2];
-        uint16_t hum_median = humidity_raw_[humidity_raw_.size() / 2];
-
-        float temp = (static_cast<float>(temp_median)* 165.0f / 65535.0f) - 40.0f;
-        float hum = (static_cast<float>(hum_median) * 100.0f / 65535.0f);
-
-        // Clear the raw data after processing
-        temperature_raw_.clear();
-        humidity_raw_.clear();
-
-        if (temperature_sensor_ != nullptr)
-            temperature_sensor_->publish_state(temp);
-        if (humidity_sensor_ != nullptr)
-            humidity_sensor_->publish_state(hum);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////////////////////////////
-    ///////////////////////////////////////////////////////////////////////////////////////////////////
+void CHT8305SnifferSensor::dump_config() {
+  LOG_SENSOR(TAG, "cht8305_sniffer:", this->temperature_sensor_);
+  LOG_SENSOR(TAG, "cht8305_sniffer:", this->humidity_sensor_);
+}
 
 } // namespace cht8305_sniffer
 } // namespace esphome

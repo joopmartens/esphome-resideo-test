@@ -1,95 +1,106 @@
 /**
-  @AUTHOR (c) 2025 Pluimvee (Erik Veer)
 
   Specifications CM1106 CO2-Sensor
   https://en.gassensor.com.cn/Product_files/Specifications/CM1106-C%20Single%20Beam%20NDIR%20CO2%20Sensor%20Module%20Specification.pdf
 
  */ 
+
 #include "cm1106_sniffer_sensor.h"
 #include "esphome/core/log.h"
+#include "esphome/core/helpers.h"
+#include "esphome/components/uart/uart.h"
 
 namespace esphome {
 namespace cm1106_sniffer {
 
-static const char *TAG = "cm1106_sniffer";
+static const char *const TAG = "cm1106_sniffer";
 
-///////////////////////////////////////////////////////////////////////////////////////////////////
-// We use the standard (default) Serial (UART) to receive the data from the CM1106 sensor.
-///////////////////////////////////////////////////////////////////////////////////////////////////
-void CM1106SnifferSensor::setup() {
-  Serial.begin(9600);
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////
-// We capture the value in the loop() method, so we are
-// 1. fast to not miss any values
-// 2. independend on the update_interval
-///////////////////////////////////////////////////////////////////////////////////////////////////
-void CM1106SnifferSensor::loop() 
-{
-  uint8_t response[8] = {0};
-
-  // All read responses start with 0x16
-  // The payload length for the Co2 message is 0x05
-  // The command for the Co2 message is 0x01
-  uint8_t expected_header[3] = {0x16, 0x05, 0x01};
-
-  // first check if there are sufficient bytes available
-  int available = Serial.available();
-  if (available < 8) 
+void CM1106Sniffer::setup() {
+  ESP_LOGCONFIG(TAG, "Setting up CM1106 Sniffer Sensor...");
+  if (this->uart_component_ == nullptr) {
+    ESP_LOGE(TAG, "UART component not set!");
     return;
-
-  // consume old messages
-  while (available >= 16) {
-    Serial.readBytes(response, 8);
-    available = Serial.available();
   }
-
-  // find the start of the message
-  int matched = 0;
-  while (matched < sizeof(expected_header)) {
-    if (Serial.available()) {
-      Serial.readBytes(response + matched, 1);
-    } else {
-      return; // exit if we didnt find the header and uart queue is empty
-    }
-    if (response[matched] == expected_header[matched]) {
-      matched++;
-    } else {
-      matched = 0; // reset if we don't match
-    }
-  }
-  // if we end up here we have found the header
-  available = Serial.available();
-  if (available < sizeof(response) - matched) {
-    ESP_LOGW(TAG, "Not enough bytes available after header match: %d", available);
-    return; // not enough bytes available to read the rest of the message
-  }
-  matched += Serial.readBytes(&response[matched], sizeof(response) - matched);
-
-  // Checksum: 256-(HEAD+LEN+CMD+DATA)%256
-  uint8_t crc = 0;
-  for (int i = 0; i < matched; ++i)
-    crc -= response[i];
-
-  // We have included the CRC checksum (last byte of the response) so the crc should equal to 0x00
-  if (crc != 0x00) {
-    ESP_LOGW(TAG, "Bad checksum: got 0x%02X, expected 0x00", crc);
-    return; // checksum does not match
-  }
-  // everything is okay, store the PPM in cached_ppm_ so it can be published
-  cached_ppm_ = (response[3] << 8) | response[4];
+  this->uart_component_->flush();
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////
-// Publish the cached PPM value to the frontend. 
-///////////////////////////////////////////////////////////////////////////////////////////////////
-void CM1106SnifferSensor::update() {
-  this->publish_state(cached_ppm_);
+void CM1106Sniffer::loop() {
+  if (this->uart_component_ == nullptr) {
+    return;
+  }
+  // Only process one frame if an update is due
+  if (!this->should_update_) {
+    return;
+  }
+  while (this->uart_component_->available()) {
+    uint8_t byte;
+    this->uart_component_->read_byte(&byte);
+    this->handle_byte(byte);
+    // After handling one full frame, stop processing
+    if (this->frame_ready_) {
+      this->should_update_ = false;
+      this->frame_ready_ = false;
+      return;
+    }
+  }
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////
+void CM1106Sniffer::handle_byte(uint8_t byte) {
+  if (this->buffer_pos_ == 0 && byte != 0x16) {
+    return;
+  }
+  
+  this->buffer_[this->buffer_pos_++] = byte;
+
+  if (this->buffer_pos_ < 9) {
+    return;
+  }
+
+  // Log the received frame for debugging
+  ESP_LOGD(TAG, "Received frame: %s", format_hex_pretty(this->buffer_, 9).c_str());
+
+  if (this->buffer_[0] != 0x16) {
+    ESP_LOGW(TAG, "Invalid start byte: 0x%02X", this->buffer_[0]);
+    this->reset_buffer_();
+    return;
+  }
+
+  uint8_t checksum = 0;
+  // Checksum is the two's complement of the sum of bytes 1 through 7.
+  for (int i = 1; i < 8; ++i) {
+    checksum += this->buffer_[i];
+  }
+  checksum = 0xFF - checksum + 1;
+  
+  if (this->buffer_[8] != checksum) {
+    ESP_LOGW(TAG, "Checksum mismatch: calculated 0x%02X, received 0x%02X", checksum, this->buffer_[8]);
+    this->reset_buffer_();
+    return;
+  }
+
+  uint16_t co2_value = (uint16_t) this->buffer_[3] << 8 | this->buffer_[4];
+  
+  this->co2_value_ = co2_value; // Store the value instead of publishing
+  ESP_LOGD(TAG, "CO2 value: %d ppm (stored)", co2_value);
+  
+  this->reset_buffer_();
+  this->frame_ready_ = true; // Signal that a new frame has been processed
+}
+
+void CM1106Sniffer::dump_config() {
+  //ESP_LOGCONFIG(TAG, "cm1106_sniffer:");
+  LOG_SENSOR(TAG, "cm1106_sniffer:", this);
+}
+
+void CM1106Sniffer::update() {
+  this->should_update_ = true;
+  this->loop();
+  this->publish_state(this->co2_value_);
+}
+
+void CM1106Sniffer::reset_buffer_() {
+  this->buffer_pos_ = 0;
+}
 
 }  // namespace cm1106_sniffer
 }  // namespace esphome

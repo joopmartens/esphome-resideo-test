@@ -22,8 +22,8 @@ CHT8305Sniffer = cht8305_ns.class_("CHT8305SnifferSensor", cg.PollingComponent)
 
 CONFIG_SCHEMA = cv.Schema({
     cv.GenerateID(): cv.declare_id(CHT8305Sniffer),
-    cv.Optional(CONF_SDA_PIN, default=4): cv.int_,   # D2 on ESP8266
-    cv.Optional(CONF_SCL_PIN, default=5): cv.int_,   # D1 on ESP8266
+    cv.Optional(CONF_SDA_PIN, default=8): cv.int_,
+    cv.Optional(CONF_SCL_PIN, default=9): cv.int_,
     cv.Optional(CONF_TEMPERATURE, default={}): sensor.sensor_schema(
         unit_of_measurement=UNIT_CELSIUS,
         icon=ICON_THERMOMETER,
@@ -38,7 +38,7 @@ CONFIG_SCHEMA = cv.Schema({
         device_class=DEVICE_CLASS_HUMIDITY,
         state_class="measurement",
     )
-}).extend(cv.polling_component_schema("5s"))
+}).extend(cv.polling_component_schema("10s"))
 
 async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
