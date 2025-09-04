@@ -19,7 +19,6 @@ external_components:
 uart:
   rx_pin: 20  #RX pin used for reading the cm1106 sensor
   baud_rate: 9600
-  rx_buffer_size: 128
   id: cm1106_uart
 
 sensor:
