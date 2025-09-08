@@ -99,12 +99,12 @@ void CM1106Sniffer::dump_config() {
 void CM1106Sniffer::update() {
   //this->should_update_ = true;
   //this->loop();
-  if (this->co2_value_.empty()) {
+  if (this->co2_value_ == 0) {
       ESP_LOGW(TAG, "No data available to update CO2 sensors.");
       return;
   }
   this->publish_state(this->co2_value_);
-  this->co2_value_.clear();
+  this->co2_value_ = 0;
 }
 
 void CM1106Sniffer::reset_buffer_() {
