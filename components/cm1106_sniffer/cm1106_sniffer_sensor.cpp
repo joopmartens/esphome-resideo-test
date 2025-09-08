@@ -29,16 +29,16 @@ void CM1106Sniffer::loop() {
     return;
   }
   // Only process one frame if an update is due
-  if (!this->should_update_) {
-    return;
-  }
+  //if (!this->should_update_) {
+  //  return;
+  //}
   while (this->uart_component_->available()) {
     uint8_t byte;
     this->uart_component_->read_byte(&byte);
     this->handle_byte(byte);
     // After handling one full frame, stop processing
     if (this->frame_ready_) {
-      this->should_update_ = false;
+      //this->should_update_ = false;
       this->frame_ready_ = false;
       return;
     }
@@ -97,9 +97,14 @@ void CM1106Sniffer::dump_config() {
 }
 
 void CM1106Sniffer::update() {
-  this->should_update_ = true;
-  this->loop();
+  //this->should_update_ = true;
+  //this->loop();
+  if (this->co2_value_.empty()) {
+      ESP_LOGW(TAG, "No data available to update CO2 sensors.");
+      return;
+  }
   this->publish_state(this->co2_value_);
+  this->co2_value_.clear();
 }
 
 void CM1106Sniffer::reset_buffer_() {
