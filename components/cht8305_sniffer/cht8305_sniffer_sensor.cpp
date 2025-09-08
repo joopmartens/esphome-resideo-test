@@ -147,7 +147,7 @@ void CHT8305SnifferSensor::update() {
 
     // Convert raw data to actual values
     float temp_value = (static_cast<float>(temp_median) * 165.0f / 65535.0f) - 40.0f;
-    float hum_value = (static_cast<float>(hum_median) * 100.0
+    float hum_value = (static_cast<float>(hum_median) * 100.0f / 65535.0f);
     
     // Validate ranges before publishing
     if (temp_value >= -20 && temp_value <= 100) {
