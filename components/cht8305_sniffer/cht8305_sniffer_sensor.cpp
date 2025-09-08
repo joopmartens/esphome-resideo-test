@@ -145,16 +145,29 @@ void CHT8305SnifferSensor::update() {
     uint16_t temp_median = this->temperature_raw_[this->temperature_raw_.size() / 2];
     uint16_t hum_median = this->humidity_raw_[this->humidity_raw_.size() / 2];
 
-    float temp = (static_cast<float>(temp_median) * 165.0f / 65535.0f) - 40.0f;
-    float hum = (static_cast<float>(hum_median) * 100.0f / 65535.0f);
+    // Convert raw data to actual values
+    float temp_value = (static_cast<float>(temp_median) * 165.0f / 65535.0f) - 40.0f;
+    float hum_value = (static_cast<float>(hum_median) * 100.0
+    
+    // Validate ranges before publishing
+    if (temp_value >= -20 && temp_value <= 100) {
+      float temp = temp_value;
+        if (this->temperature_sensor_ != nullptr)
+            this->temperature_sensor_->publish_state(temp);
+    } else {
+        ESP_LOGW(TAG, "Temperature value %.2f°C is out of range, not publishing.", temp_value);
+    }
+
+    if (hum_value >= 1 && hum_value <= 100) {
+      float hum = hum_value;
+        if (this->humidity_sensor_ != nullptr)
+            this->humidity_sensor_->publish_state(hum);
+    } else {
+        ESP_LOGW(TAG, "Humidity value %.2f%% is out of range, not publishing.", hum_value);
+    }
 
     this->temperature_raw_.clear();
     this->humidity_raw_.clear();
-
-    if (this->temperature_sensor_ != nullptr)
-        this->temperature_sensor_->publish_state(temp);
-    if (this->humidity_sensor_ != nullptr)
-        this->humidity_sensor_->publish_state(hum);
 }
 
 void CHT8305SnifferSensor::dump_config() {

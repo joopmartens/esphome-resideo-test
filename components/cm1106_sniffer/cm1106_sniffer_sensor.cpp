@@ -80,6 +80,7 @@ void CM1106Sniffer::handle_byte(uint8_t byte) {
 
   uint16_t co2_value = (uint16_t) this->buffer_[3] << 8 | this->buffer_[4];
   
+  // Validate CO2 value range before storing
   if (co2_value >= 350 && co2_value <= 5000) {
     this->co2_value_ = co2_value; // Store the value instead of publishing
     ESP_LOGD(TAG, "CO2 value: %d ppm", co2_value);
