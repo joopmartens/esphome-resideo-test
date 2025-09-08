@@ -150,12 +150,12 @@ void CHT8305SnifferSensor::update() {
     float hum_value = (static_cast<float>(hum_median) * 100.0f / 65535.0f);
     
     // Validate ranges before publishing
-    if (temp_value >= -20 && temp_value <= 100) {
+    if (temp_value >= -5 && temp_value <= 50) {
       float temp = temp_value;
         if (this->temperature_sensor_ != nullptr)
             this->temperature_sensor_->publish_state(temp);
     } else {
-        ESP_LOGW(TAG, "Temperature value %.2f°C is out of range, not publishing.", temp_value);
+        ESP_LOGW(TAG, "Temperature value %.2f°C is out of range (-5-50), not publishing.", temp_value);
     }
 
     if (hum_value >= 1 && hum_value <= 100) {
@@ -163,7 +163,7 @@ void CHT8305SnifferSensor::update() {
         if (this->humidity_sensor_ != nullptr)
             this->humidity_sensor_->publish_state(hum);
     } else {
-        ESP_LOGW(TAG, "Humidity value %.2f%% is out of range, not publishing.", hum_value);
+        ESP_LOGW(TAG, "Humidity value %.2f%% is out of range (1-100), not publishing.", hum_value);
     }
 
     this->temperature_raw_.clear();
