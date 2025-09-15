@@ -105,7 +105,9 @@ void CM1106Sniffer::update() {
 
   // Validate CO2 value range before storing
   if (co2_median >= 350 && co2_median <= 5000) {
-       this->publish_state(this->co2_median);   
+       this->co2_value_ = co2_median;
+       this->publish_state(this->co2_value_);
+       this->co2_value_ = 0;
       ESP_LOGD(TAG, "CO2 value: %d ppm", co2_median);
   } else {
     ESP_LOGW(TAG, "Received CO2 value %d ppm is outside the valid range (350-5000), not publishing.", co2_median);
