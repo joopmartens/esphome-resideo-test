@@ -28,17 +28,13 @@ void CM1106Sniffer::loop() {
   if (this->uart_component_ == nullptr) {
     return;
   }
-  // Only process one frame if an update is due
-  //if (!this->should_update_) {
-  //  return;
-  //}
+
   while (this->uart_component_->available()) {
     uint8_t byte;
     this->uart_component_->read_byte(&byte);
     this->handle_byte(byte);
     // After handling one full frame, stop processing
     if (this->frame_ready_) {
-      //this->should_update_ = false;
       this->frame_ready_ = false;
       return;
     }
@@ -87,14 +83,11 @@ void CM1106Sniffer::handle_byte(uint8_t byte) {
 }
 
 void CM1106Sniffer::dump_config() {
-  //ESP_LOGCONFIG(TAG, "cm1106_sniffer:");
   LOG_SENSOR(TAG, "cm1106_sniffer:", this);
 }
 
 void CM1106Sniffer::update() {
-  //this->should_update_ = true;
-  //this->loop();
-  if (this->co2_raw_.empty()) {
+  if (this->co2_raw_.empty() || this->co2_raw_.size() < 3) {
       ESP_LOGW(TAG, "No data available to update sensor.");
       return;
   }
@@ -108,14 +101,11 @@ void CM1106Sniffer::update() {
        this->co2_value_ = co2_median;
        this->publish_state(this->co2_value_);
        this->co2_value_ = 0;
-      ESP_LOGD(TAG, "CO2 value: %d ppm", co2_median);
+      //ESP_LOGD(TAG, "CO2 value: %d ppm", co2_median);
   } else {
     ESP_LOGW(TAG, "Received CO2 value %d ppm is outside the valid range (350-5000), not publishing.", co2_median);
   } 
-  
 
-  //this->publish_state(this->co2_value_);
-  //this->co2_value_ = 0;
   this->co2_raw_.clear();
 }
 
