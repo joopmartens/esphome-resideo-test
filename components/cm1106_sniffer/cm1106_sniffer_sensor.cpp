@@ -88,7 +88,7 @@ void CM1106Sniffer::dump_config() {
 
 void CM1106Sniffer::update() {
   if (this->co2_raw_.empty() || this->co2_raw_.size() < 3) {
-      ESP_LOGW(TAG, "No data available to update sensor.");
+      ESP_LOGW(TAG, "No data available to update co2 sensor.");
       return;
   }
   ESP_LOGD(TAG, "Taking the mean from a window size %d", this->co2_raw_.size());
