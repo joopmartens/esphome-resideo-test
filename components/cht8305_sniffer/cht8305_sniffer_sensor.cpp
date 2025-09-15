@@ -1,7 +1,6 @@
 /**
  * Specifications CHT8305 T/H Sensor
- * Oct 2017 rev 1.1 SENSYLINK MIcroelectronics Co. LTD
- * https://www.semiee.com/file/Sensylink/Sensylink-CHT8305.pdf
+ * https://dfimg.dfrobot.com/5ea64bf6cf1d8c7738ad2881/wiki/98bc09dcde89e9f3934f6d7f1d1fff32.pdf
  */
 
 #include "cht8305_sniffer_sensor.h"
