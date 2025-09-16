@@ -128,17 +128,17 @@ void CHT8305SnifferSensor::loop() {
     unsigned long now = millis();
     if (this->i2c_idle_ && (now - this->last_sample_time_ > 100)) {
         this->last_sample_time_ = now;
-        //uint16_t temp = (uint16_t)this->device_register_[0] << 8 | this->device_register_[1];
-        //uint16_t humidity = (uint16_t)this->device_register_[2] << 8 | this->device_register_[3];
+        uint16_t temp = (uint16_t)this->device_register_[0] << 8 | this->device_register_[1];
+        uint16_t humidity = (uint16_t)this->device_register_[2] << 8 | this->device_register_[3];
 
-        uint16_t temp;
-        uint16_t humidity;
+        //uint16_t temp;
+        //uint16_t humidity;
 
         // Enter critical section to safely read from device_register_, which is modified by an ISR.
-        taskDISABLE_INTERRUPTS();
-        temp = (uint16_t)this->device_register_[0] << 8 | this->device_register_[1];
-        humidity = (uint16_t)this->device_register_[2] << 8 | this->device_register_[3];
-        taskENABLE_INTERRUPTS();
+        //taskDISABLE_INTERRUPTS();
+        //temp = (uint16_t)this->device_register_[0] << 8 | this->device_register_[1];
+        //humidity = (uint16_t)this->device_register_[2] << 8 | this->device_register_[3];
+        //taskENABLE_INTERRUPTS();
 
         //Protect access to raw data vectors with a mutex to prevent exceptions
         //std::lock_guard<esphome::Mutex> lock(this->raw_data_mutex_);
