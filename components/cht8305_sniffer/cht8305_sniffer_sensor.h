@@ -58,7 +58,6 @@ class CHT8305SnifferSensor : public sensor::Sensor, public PollingComponent {
   sensor::Sensor *humidity_sensor_ = nullptr;
  
  protected:
-  // ... other members
   esphome::Mutex raw_data_mutex_;
 };
 

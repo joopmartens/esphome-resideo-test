@@ -75,6 +75,8 @@ void CM1106Sniffer::handle_byte(uint8_t byte) {
   }
 
   uint16_t co2_raw_value = (uint16_t) this->buffer_[3] << 8 | this->buffer_[4];
+  //Protect access to raw data vectors with a mutex to prevent exceptions
+  std::lock_guard<esphome::Mutex> lock(this->raw_data_mutex_);
   this->co2_raw_.push_back(co2_raw_value);
 
   
@@ -87,6 +89,8 @@ void CM1106Sniffer::dump_config() {
 }
 
 void CM1106Sniffer::update() {
+  //Protect access to raw data vectors with a mutex to prevent exceptions
+  std::lock_guard<esphome::Mutex> lock(this->raw_data_mutex_);
   if (this->co2_raw_.empty() || this->co2_raw_.size() < 3) {
       ESP_LOGW(TAG, "No data available to update co2 sensor.");
       return;
