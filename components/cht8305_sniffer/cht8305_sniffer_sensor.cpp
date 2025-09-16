@@ -141,7 +141,7 @@ void CHT8305SnifferSensor::loop() {
         //taskENABLE_INTERRUPTS();
 
         //Protect access to raw data vectors with a mutex to prevent exceptions
-        //std::lock_guard<esphome::Mutex> lock(this->raw_data_mutex_);
+        std::lock_guard<esphome::Mutex> lock(this->raw_data_mutex_);
         this->temperature_raw_.push_back(temp);
         this->humidity_raw_.push_back(humidity);
     }
@@ -149,7 +149,7 @@ void CHT8305SnifferSensor::loop() {
 
 void CHT8305SnifferSensor::update() {
     //Protect access to raw data vectors with a mutex to prevent exceptions
-    //std::lock_guard<esphome::Mutex> lock(this->raw_data_mutex_);
+    std::lock_guard<esphome::Mutex> lock(this->raw_data_mutex_);
     if (this->temperature_raw_.empty() || this->humidity_raw_.empty()) {
         ESP_LOGW(TAG, "No data available to update sensors.");
         return;
