@@ -44,7 +44,11 @@ void IRAM_ATTR i2cTriggerOnRaisingSCL(void *arg) {
             I2C_HANDLE_NACK; // On NACK we end the conversation as the slave declined the address.
             global_instance->device_register_ptr_ = global_instance->data_;
         } else {
-            global_instance->device_register_[global_instance->device_register_ptr_++] = global_instance->data_;
+            //global_instance->device_register_[global_instance->device_register_ptr_++] = global_instance->data_;
+            // Prevent buffer overflow by checking the pointer against the array size.
+            if (global_instance->device_register_ptr_ < sizeof(global_instance->device_register_)) {
+                global_instance->device_register_[global_instance->device_register_ptr_++] = global_instance->data_;
+            }      
             I2C_HANDLE_NACK; // On NACK we end the conversation AFTER storing the data.
         }
         global_instance->byte_idx_++;
@@ -124,15 +128,28 @@ void CHT8305SnifferSensor::loop() {
     unsigned long now = millis();
     if (this->i2c_idle_ && (now - this->last_sample_time_ > 100)) {
         this->last_sample_time_ = now;
-        uint16_t temp = (uint16_t)this->device_register_[0] << 8 | this->device_register_[1];
-        uint16_t humidity = (uint16_t)this->device_register_[2] << 8 | this->device_register_[3];
+        //uint16_t temp = (uint16_t)this->device_register_[0] << 8 | this->device_register_[1];
+        //uint16_t humidity = (uint16_t)this->device_register_[2] << 8 | this->device_register_[3];
 
+        uint16_t temp;
+        uint16_t humidity;
+
+        // Enter critical section to safely read from device_register_, which is modified by an ISR.
+        taskDISABLE_INTERRUPTS();
+        temp = (uint16_t)this->device_register_[0] << 8 | this->device_register_[1];
+        humidity = (uint16_t)this->device_register_[2] << 8 | this->device_register_[3];
+        taskENABLE_INTERRUPTS();
+
+        //Protect access to raw data vectors with a mutex to prevent exceptions
+        std::lock_guard<esphome::Mutex> lock(this->raw_data_mutex_);
         this->temperature_raw_.push_back(temp);
         this->humidity_raw_.push_back(humidity);
     }
 }
 
 void CHT8305SnifferSensor::update() {
+    //Protect access to raw data vectors with a mutex to prevent exceptions
+    std::lock_guard<esphome::Mutex> lock(this->raw_data_mutex_);
     if (this->temperature_raw_.empty() || this->humidity_raw_.empty()) {
         ESP_LOGW(TAG, "No data available to update sensors.");
         return;
