@@ -95,7 +95,7 @@ void CM1106Sniffer::update() {
       ESP_LOGW(TAG, "No data available to update co2 sensor.");
       return;
   }
-  ESP_LOGD(TAG, "Taking the mean from a window size %d", this->co2_raw_.size());
+  ESP_LOGD(TAG, "Calculating the median from a window size %d", this->co2_raw_.size());
   std::sort(this->co2_raw_.begin(), this->co2_raw_.end());
 
   uint16_t co2_median = this->co2_raw_[this->co2_raw_.size() / 2];
